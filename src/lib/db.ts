@@ -7,9 +7,9 @@ export async function signUp(email: string, password: string, name: string) {
     options: { data: { name } }
   })
   if (error) return { user: null, error: error.message }
-  // Update profile name (trigger creates the row)
+  // Upsert profile — works whether or not the trigger already created the row
   if (data.user) {
-    await supabase.from('profiles').update({ name, profile_completed: false }).eq('id', data.user.id)
+    await supabase.from('profiles').upsert({ id: data.user.id, name, profile_completed: false })
   }
   return { user: data.user, error: null }
 }
@@ -36,7 +36,7 @@ export async function getProfile(userId: string) {
 }
 
 export async function updateProfile(userId: string, updates: any) {
-  const { error } = await supabase.from('profiles').update(updates).eq('id', userId)
+  const { error } = await supabase.from('profiles').upsert({ id: userId, ...updates })
   return !error
 }
 
