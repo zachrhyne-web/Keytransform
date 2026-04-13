@@ -169,7 +169,7 @@ export default function KeyTransform() {
             {tab===6 && <SuppTab data={data} user={user} refresh={refreshData} />}
             {tab===7 && <MealTab pf={profile} />}
             {tab===8 && <SexTab data={data} user={user} refresh={refreshData} />}
-            {tab===9 && <CoachTab pf={profile} />}
+            {tab===9 && <CoachTab pf={profile} userId={user?.id} />}
           </div>
         </>
       )}
@@ -407,17 +407,26 @@ function SexTab({data,user,refresh}:any) {
 }
 
 // ─── AI COACH ────────────────────────────────────────────
-function CoachTab({pf}:any) {
-  const [msgs,setMsgs]=useState<any[]>([]);const [input,setInput]=useState("");const [busy,setBusy]=useState(false);const ref=useRef<HTMLDivElement>(null)
-  const SYS="You are KEY COACH, an elite health transformation advisor for "+pf.name+". Age "+(pf.age||"?")+", "+(pf.height_ft||"?")+"ft"+(pf.height_in||"?")+"in, "+(pf.weight||"?")+"lbs (goal "+(pf.goal_weight||"?")+"). BP "+(pf.bp_sys||"?")+"/"+(pf.bp_dia||"?")+". Blood sugar: "+pf.blood_sugar+". Diet: "+pf.diet_style+". Fasting: "+pf.fasting_plan+". Injuries: "+(pf.injuries||"none")+". Allergies: "+(pf.allergies||"none")+". Goals: "+(pf.goals||[]).join(", ")+". "+(pf.goals_own_words?"MOTIVATION: "+pf.goals_own_words+". ":"")+(pf.specific_concerns?"CONCERNS: "+pf.specific_concerns+". ":"")+(pf.additional_info?"CONTEXT: "+pf.additional_info+". ":"")+"YOUR EXPERTISE: health/fitness, fasting, keto/carnivore nutrition, bodybuilding, natural medicine, supplements, red light therapy, biology, culinary arts, and The Bible. Style: direct, no-BS, specific numbers, scripture when natural, actionable."
+function CoachTab({pf, userId}:any) {
+  const KEY = `kt_coach_${userId||'default'}`
+  const [msgs,setMsgs]=useState<any[]>(()=>{try{return JSON.parse(localStorage.getItem(KEY)||'[]')}catch{return []}})
+  const [input,setInput]=useState("");const [busy,setBusy]=useState(false);const ref=useRef<HTMLDivElement>(null)
+  const SYS="You are KEY COACH, an elite health transformation advisor for "+pf.name+". Age "+(pf.age||"?")+", "+(pf.height_ft||"?")+"ft"+(pf.height_in||"?")+"in, "+(pf.weight||"?")+"lbs (goal "+(pf.goal_weight||"?")+"). BP "+(pf.bp_sys||"?")+"/"+(pf.bp_dia||"?")+". Blood sugar: "+pf.blood_sugar+". Diet: "+pf.diet_style+". Fasting: "+pf.fasting_plan+". Injuries: "+(pf.injuries||"none")+". Allergies: "+(pf.allergies||"none")+". Goals: "+(pf.goals||[]).join(", ")+". "+(pf.goals_own_words?"MOTIVATION: "+pf.goals_own_words+". ":"")+(pf.specific_concerns?"CONCERNS: "+pf.specific_concerns+". ":"")+(pf.additional_info?"CONTEXT: "+pf.additional_info+". ":"")+"YOUR EXPERTISE: health/fitness, fasting, keto/carnivore nutrition, bodybuilding, natural medicine, supplements, red light therapy, biology, culinary arts, and The Bible. Style: direct, no-BS, specific numbers, scripture when natural, actionable. IMPORTANT: Chat history is automatically saved on the user's device. When asked to save or remember this conversation, confirm it is already saved automatically."
+
+  // Auto-save chat to localStorage on every message change
+  useEffect(()=>{try{localStorage.setItem(KEY,JSON.stringify(msgs))}catch{}},[msgs,KEY])
 
   const send=async()=>{if(!input.trim()||busy)return;const um={role:"user",content:input.trim()};const nm=[...msgs,um];setMsgs(nm);setInput("");setBusy(true);try{const r=await fetch("/api/coach",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system:SYS,messages:nm.map((m:any)=>({role:m.role,content:m.content}))})});const d=await r.json();const txt=(d.content||[]).filter((b:any)=>b.type==="text").map((b:any)=>b.text).join("")||"Error.";setMsgs([...nm,{role:"assistant",content:txt}])}catch{setMsgs([...nm,{role:"assistant",content:"Connection error."}])}setBusy(false)}
+  const clearChat=()=>{setMsgs([]);try{localStorage.removeItem(KEY)}catch{}}
   useEffect(()=>{if(ref.current)ref.current.scrollTop=ref.current.scrollHeight},[msgs,busy])
 
   return <div style={{display:"flex",flexDirection:"column",height:"calc(100vh-180px)",maxHeight:700}}>
-    <div style={{padding:"14px 16px",background:"#1a1d27",borderRadius:"12px 12px 0 0",border:"1px solid #2a2d37",borderBottom:"none"}}><div style={{fontSize:15,fontWeight:700}}>KEY COACH</div><div style={{fontSize:11,color:"#6a6d77"}}>Personalized for {pf.name}</div></div>
+    <div style={{padding:"14px 16px",background:"#1a1d27",borderRadius:"12px 12px 0 0",border:"1px solid #2a2d37",borderBottom:"none",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <div><div style={{fontSize:15,fontWeight:700}}>KEY COACH</div><div style={{fontSize:11,color:"#6a6d77"}}>Personalized for {pf.name} · Chat auto-saved</div></div>
+      {msgs.length>0&&<button className="bt bto bts" onClick={clearChat}>Clear Chat</button>}
+    </div>
     <div ref={ref} style={{flex:1,overflow:"auto",padding:16,background:"#12141c",borderLeft:"1px solid #2a2d37",borderRight:"1px solid #2a2d37",display:"flex",flexDirection:"column",gap:12}}>
-      {msgs.length===0&&<div style={{textAlign:"center",padding:30,color:"#6a6d77",fontSize:13}}>Ask me anything about your plan.</div>}
+      {msgs.length===0&&<div style={{textAlign:"center",padding:30,color:"#6a6d77",fontSize:13}}>Ask me anything about your plan.<br/><span style={{fontSize:11,marginTop:8,display:"block",color:"#4a4d57"}}>Chats are saved automatically on this device.</span></div>}
       {msgs.map((m:any,i:number)=><div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}><div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:12,background:m.role==="user"?"#f5c542":"#1a1d27",color:m.role==="user"?"#0f1117":"#e8e6e1",fontSize:13,lineHeight:1.6,whiteSpace:"pre-wrap",border:m.role==="user"?"none":"1px solid #2a2d37"}}>{m.content}</div></div>)}
       {busy&&<div style={{padding:"10px 18px",borderRadius:12,background:"#1a1d27",border:"1px solid #2a2d37",width:"fit-content"}}><div style={{display:"flex",gap:4,animation:"pulse 1s infinite"}}><div style={{width:7,height:7,borderRadius:"50%",background:"#f5c542"}}/><div style={{width:7,height:7,borderRadius:"50%",background:"#f5c542",opacity:.6}}/><div style={{width:7,height:7,borderRadius:"50%",background:"#f5c542",opacity:.3}}/></div></div>}
     </div>

@@ -34,29 +34,32 @@ export async function getUser() {
 // Primary storage: Supabase auth user_metadata — no RLS required, always works
 // Secondary: profiles table (used for foreign keys by other tables)
 export async function getProfile(userId: string) {
-  // Read from auth user metadata first — this always works for authenticated users
-  const { data: { user } } = await supabase.auth.getUser()
-  if (user?.user_metadata && user.user_metadata.profile_completed !== undefined) {
-    return { id: userId, ...user.user_metadata }
-  }
-  // Fallback: try profiles table
-  const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
-  if (data) return data
-  // No profile found anywhere — new user
+  // Check both sources in parallel — use whichever says profile_completed: true
+  const [tableResult, authResult] = await Promise.all([
+    supabase.from('profiles').select('*').eq('id', userId).single(),
+    supabase.auth.getUser()
+  ])
+  const tableData = tableResult.data
+  const metaData = authResult.data?.user?.user_metadata
+
+  // Prefer whichever source has profile_completed: true to avoid false redirect to wizard
+  if (tableData?.profile_completed) return tableData
+  if (metaData?.profile_completed) return { id: userId, ...metaData }
+  // Neither says completed — return whichever exists (new/incomplete user)
+  if (tableData) return tableData
+  if (metaData && Object.keys(metaData).length > 0) return { id: userId, ...metaData }
   return null
 }
 
 export async function updateProfile(userId: string, updates: any) {
-  // Primary: save to auth user_metadata — no RLS, guaranteed for authenticated users
-  const { error } = await supabase.auth.updateUser({ data: updates })
-  if (error) {
-    console.error('updateProfile (metadata) error:', error)
-    return false
-  }
-  // Secondary: also sync to profiles table (non-critical, for FK relationships)
-  supabase.from('profiles').upsert({ id: userId, ...updates }, { onConflict: 'id' })
-    .then(({ error: e }) => { if (e) console.warn('profiles table sync (non-critical):', e.message) })
-  return true
+  // Save to both stores in parallel so getProfile always finds profile_completed: true
+  const [authResult, tableResult] = await Promise.all([
+    supabase.auth.updateUser({ data: updates }),
+    supabase.from('profiles').upsert({ id: userId, ...updates }, { onConflict: 'id' })
+  ])
+  if (authResult.error) console.error('updateProfile (metadata):', authResult.error.message)
+  if (tableResult.error) console.warn('updateProfile (table):', tableResult.error.message)
+  return !authResult.error || !tableResult.error
 }
 
 // ─── WEIGHT ──────────────────────────────────────────────
