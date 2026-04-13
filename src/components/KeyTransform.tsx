@@ -84,13 +84,14 @@ export default function KeyTransform() {
       if (session?.user) {
         setUser(session.user)
         const prof = await db.getProfile(session.user.id)
+        const localDone = localStorage.getItem(`kt_done_${session.user.id}`) === '1'
         if (prof) {
           setProfile({...defaultProfile(), ...prof})
           const allData = await db.loadAllData(session.user.id)
           setData({...defaultData(), ...allData})
-          setScreen((prof.profile_completed || !!(prof.name && prof.age && prof.weight)) ? "dashboard" : "wizard")
+          setScreen((prof.profile_completed || !!(prof.name && prof.age && prof.weight) || localDone) ? "dashboard" : "wizard")
         } else {
-          setScreen("wizard")
+          setScreen(localDone ? "dashboard" : "wizard")
         }
       } else {
         setScreen("auth")
@@ -124,18 +125,20 @@ export default function KeyTransform() {
       {screen === "auth" && <AuthScreen onAuth={async (u: any) => {
         setUser(u)
         const prof = await db.getProfile(u.id)
+        const localDone = localStorage.getItem(`kt_done_${u.id}`) === '1'
         if (prof) {
           setProfile({...defaultProfile(), ...prof})
           const allData = await db.loadAllData(u.id)
           setData({...defaultData(), ...allData})
-          setScreen((prof.profile_completed || !!(prof.name && prof.age && prof.weight)) ? "dashboard" : "wizard")
+          setScreen((prof.profile_completed || !!(prof.name && prof.age && prof.weight) || localDone) ? "dashboard" : "wizard")
         } else {
-          setScreen("wizard")
+          setScreen(localDone ? "dashboard" : "wizard")
         }
       }} />}
       {screen === "wizard" && <WizardScreen profile={profile} user={user} onComplete={async (p: any) => {
         setProfile(p)
         await db.updateProfile(user.id, {...p, profile_completed: true})
+        localStorage.setItem(`kt_done_${user.id}`, '1')
         const allData = await db.loadAllData(user.id)
         setData({...defaultData(), ...allData})
         setScreen("dashboard")

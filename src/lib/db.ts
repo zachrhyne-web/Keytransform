@@ -34,7 +34,6 @@ export async function getUser() {
 // Primary storage: Supabase auth user_metadata — no RLS required, always works
 // Secondary: profiles table (used for foreign keys by other tables)
 export async function getProfile(userId: string) {
-  // Check both sources in parallel — use whichever says profile_completed: true
   const [tableResult, authResult] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', userId).single(),
     supabase.auth.getUser()
@@ -42,10 +41,14 @@ export async function getProfile(userId: string) {
   const tableData = tableResult.data
   const metaData = authResult.data?.user?.user_metadata
 
-  // Prefer whichever source has profile_completed: true to avoid false redirect to wizard
+  // Use whichever source explicitly marks profile complete
   if (tableData?.profile_completed) return tableData
   if (metaData?.profile_completed) return { id: userId, ...metaData }
-  // Neither says completed — return whichever exists (new/incomplete user)
+
+  // Neither has profile_completed:true — prefer auth metadata if it has wizard data
+  // (old code stored all wizard fields in auth metadata, profiles table only has name from trigger)
+  if (metaData?.age && metaData?.weight) return { id: userId, ...metaData }
+
   if (tableData) return tableData
   if (metaData && Object.keys(metaData).length > 0) return { id: userId, ...metaData }
   return null
