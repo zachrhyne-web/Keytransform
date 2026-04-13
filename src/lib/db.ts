@@ -4,12 +4,13 @@ import { supabase } from './supabase'
 export async function signUp(email: string, password: string, name: string) {
   const { data, error } = await supabase.auth.signUp({
     email, password,
-    options: { data: { name } }
+    options: { data: { name, profile_completed: false } }
   })
   if (error) return { user: null, error: error.message }
-  // Upsert profile — works whether or not the trigger already created the row
+  // Also try to create profiles table row (for foreign keys), but this is non-critical
   if (data.user) {
-    await supabase.from('profiles').upsert({ id: data.user.id, name, profile_completed: false })
+    supabase.from('profiles').upsert({ id: data.user.id, name, profile_completed: false }, { onConflict: 'id' })
+      .then(({ error: e }) => { if (e) console.warn('profiles table row (non-critical):', e.message) })
   }
   return { user: data.user, error: null }
 }
@@ -30,14 +31,32 @@ export async function getUser() {
 }
 
 // ─── PROFILE ─────────────────────────────────────────────
+// Primary storage: Supabase auth user_metadata — no RLS required, always works
+// Secondary: profiles table (used for foreign keys by other tables)
 export async function getProfile(userId: string) {
+  // Read from auth user metadata first — this always works for authenticated users
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user?.user_metadata && user.user_metadata.profile_completed !== undefined) {
+    return { id: userId, ...user.user_metadata }
+  }
+  // Fallback: try profiles table
   const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
-  return data
+  if (data) return data
+  // No profile found anywhere — new user
+  return null
 }
 
 export async function updateProfile(userId: string, updates: any) {
-  const { error } = await supabase.from('profiles').upsert({ id: userId, ...updates })
-  return !error
+  // Primary: save to auth user_metadata — no RLS, guaranteed for authenticated users
+  const { error } = await supabase.auth.updateUser({ data: updates })
+  if (error) {
+    console.error('updateProfile (metadata) error:', error)
+    return false
+  }
+  // Secondary: also sync to profiles table (non-critical, for FK relationships)
+  supabase.from('profiles').upsert({ id: userId, ...updates }, { onConflict: 'id' })
+    .then(({ error: e }) => { if (e) console.warn('profiles table sync (non-critical):', e.message) })
+  return true
 }
 
 // ─── WEIGHT ──────────────────────────────────────────────

@@ -121,7 +121,18 @@ export default function KeyTransform() {
   return (
     <div style={{minHeight:"100vh",background:"#0f1117",color:"#e8e6e1",fontFamily:"'Outfit',sans-serif"}}>
       <style>{CSS}</style>
-      {screen === "auth" && <AuthScreen onAuth={(u: any) => { setUser(u); setScreen("wizard"); }} />}
+      {screen === "auth" && <AuthScreen onAuth={async (u: any) => {
+        setUser(u)
+        const prof = await db.getProfile(u.id)
+        if (prof) {
+          setProfile({...defaultProfile(), ...prof})
+          const allData = await db.loadAllData(u.id)
+          setData({...defaultData(), ...allData})
+          setScreen(prof.profile_completed ? "dashboard" : "wizard")
+        } else {
+          setScreen("wizard")
+        }
+      }} />}
       {screen === "wizard" && <WizardScreen profile={profile} user={user} onComplete={async (p: any) => {
         setProfile(p)
         await db.updateProfile(user.id, {...p, profile_completed: true})
