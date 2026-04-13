@@ -88,7 +88,7 @@ export default function KeyTransform() {
           setProfile({...defaultProfile(), ...prof})
           const allData = await db.loadAllData(session.user.id)
           setData({...defaultData(), ...allData})
-          setScreen(prof.profile_completed ? "dashboard" : "wizard")
+          setScreen((prof.profile_completed || !!(prof.name && prof.age && prof.weight)) ? "dashboard" : "wizard")
         } else {
           setScreen("wizard")
         }
@@ -128,7 +128,7 @@ export default function KeyTransform() {
           setProfile({...defaultProfile(), ...prof})
           const allData = await db.loadAllData(u.id)
           setData({...defaultData(), ...allData})
-          setScreen(prof.profile_completed ? "dashboard" : "wizard")
+          setScreen((prof.profile_completed || !!(prof.name && prof.age && prof.weight)) ? "dashboard" : "wizard")
         } else {
           setScreen("wizard")
         }
@@ -288,7 +288,12 @@ function WizardScreen({ profile, user, onComplete }: any) {
         <div className="cd" style={{padding:24}}>{steps[step]}</div>
         <div style={{display:"flex",justifyContent:"space-between",marginTop:16}}>
           <button className="bt bto" onClick={()=>setStep(s=>s-1)} style={{visibility:step>0?"visible":"hidden"}}>Back</button>
-          <button className="bt" onClick={()=>{ if(step<steps.length-1) setStep(s=>s+1); else onComplete(p); }}>{step===steps.length-1?"Complete Setup":"Next"}</button>
+          <div style={{display:"flex",gap:8}}>
+            {(profile.name && profile.age && profile.weight) && (
+              <button className="bt bto" onClick={()=>onComplete(p)} style={{fontSize:12}}>Go to Dashboard</button>
+            )}
+            <button className="bt" onClick={()=>{ if(step<steps.length-1) setStep(s=>s+1); else onComplete(p); }}>{step===steps.length-1?"Complete Setup":"Next"}</button>
+          </div>
         </div>
       </div>
     </div>
