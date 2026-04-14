@@ -165,6 +165,21 @@ export async function setCycleStart(userId: string, date: string) {
   await supabase.from('cycle_tracking').upsert({ user_id: userId, cycle_start: date })
 }
 
+// ─── MEDICAL DOCS ────────────────────────────────────────
+export async function getMedicalDocs(userId: string) {
+  const { data, error } = await supabase.from('medical_docs').select('*').eq('user_id', userId).order('created_at', { ascending: false })
+  if (error) { console.warn('getMedicalDocs:', error.message); return [] }
+  return data || []
+}
+export async function addMedicalDoc(userId: string, doc: any) {
+  const { data, error } = await supabase.from('medical_docs').insert({ user_id: userId, ...doc }).select().single()
+  if (error) { console.error('addMedicalDoc:', error.message); return null }
+  return data
+}
+export async function deleteMedicalDoc(id: number) {
+  await supabase.from('medical_docs').delete().eq('id', id)
+}
+
 // ─── LOAD ALL DATA ───────────────────────────────────────
 export async function loadAllData(userId: string) {
   const [weights, waist, bp, fastLog, foodLog, workoutLog, suppChecks, sexLog, currentFast, cycleStart] = await Promise.all([

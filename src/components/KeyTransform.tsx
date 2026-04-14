@@ -4,7 +4,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { supabase } from '@/lib/supabase'
 import * as db from '@/lib/db'
 
-const TABS = ["Overview","Progress","Fasting","Food Log","Body Stats","Workouts","Supplements","Meal Plan","Sexual Health","AI Coach"]
+const TABS = ["Overview","Progress","Fasting","Food Log","Body Stats","Workouts","Supplements","Meal Plan","Sexual Health","Labs & Docs","AI Coach"]
 const today = () => new Date().toISOString().split("T")[0]
 const fmt = (d: string) => new Date(d+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})
 
@@ -112,8 +112,16 @@ export default function KeyTransform() {
   const [user, setUser] = useState<any>(null)
   const [profile, setProfile] = useState<any>(defaultProfile())
   const [data, setData] = useState<any>(defaultData())
+  const [medDocs, setMedDocs] = useState<any[]>([])
   const [screen, setScreen] = useState("loading")
   const [tab, setTab] = useState(0)
+
+  const refreshMedDocs = useCallback(async (uid?: string) => {
+    const id = uid || user?.id
+    if (!id) return
+    const docs = await db.getMedicalDocs(id)
+    setMedDocs(docs)
+  }, [user])
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -123,8 +131,9 @@ export default function KeyTransform() {
         const localDone = localStorage.getItem(`kt_done_${session.user.id}`) === '1'
         if (prof) {
           setProfile({...defaultProfile(), ...prof})
-          const allData = await db.loadAllData(session.user.id)
+          const [allData, docs] = await Promise.all([db.loadAllData(session.user.id), db.getMedicalDocs(session.user.id)])
           setData({...defaultData(), ...allData})
+          setMedDocs(docs)
           setScreen((prof.profile_completed || !!(prof.name && prof.age && prof.weight) || localDone) ? "dashboard" : "wizard")
         } else {
           setScreen(localDone ? "dashboard" : "wizard")
@@ -164,8 +173,9 @@ export default function KeyTransform() {
         const localDone = localStorage.getItem(`kt_done_${u.id}`) === '1'
         if (prof) {
           setProfile({...defaultProfile(), ...prof})
-          const allData = await db.loadAllData(u.id)
+          const [allData, docs] = await Promise.all([db.loadAllData(u.id), db.getMedicalDocs(u.id)])
           setData({...defaultData(), ...allData})
+          setMedDocs(docs)
           setScreen((prof.profile_completed || !!(prof.name && prof.age && prof.weight) || localDone) ? "dashboard" : "wizard")
         } else {
           setScreen(localDone ? "dashboard" : "wizard")
@@ -208,7 +218,8 @@ export default function KeyTransform() {
             {tab===6 && <SuppTab data={data} user={user} refresh={refreshData} pf={profile} />}
             {tab===7 && <MealTab pf={profile} />}
             {tab===8 && <SexTab data={data} user={user} refresh={refreshData} pf={profile} />}
-            {tab===9 && <CoachTab pf={profile} userId={user?.id} />}
+            {tab===9 && <LabsTab user={user} pf={profile} medDocs={medDocs} refreshDocs={()=>refreshMedDocs(user?.id)} />}
+            {tab===10 && <CoachTab pf={profile} userId={user?.id} medDocs={medDocs} />}
           </div>
         </>
       )}
@@ -382,17 +393,147 @@ function RatingPick({label,value,onChange,color,lo,hi}:any) { return <div style=
 
 // ─── OVERVIEW ────────────────────────────────────────────
 function OverviewTab({data,pf,sw,gw}:any) {
+  const [now,setNow]=useState(Date.now())
+  useEffect(()=>{const t=setInterval(()=>setNow(Date.now()),60000);return()=>clearInterval(t)},[])
+
+  // Weight
   const lw=data.weights.length?data.weights[data.weights.length-1].value:sw
-  const lost=sw-lw;const diff=sw-gw;const pct=diff>0?Math.min(100,(lost/diff)*100):0
-  const suppList = pf?.gender==='female' ? SUPPS_FEMALE : SUPPS_MALE
+  const lost=Number((sw-lw).toFixed(1));const diff=sw-gw;const pct=diff>0?Math.min(100,(lost/diff)*100):0
+  const last7w=data.weights.filter((w:any)=>(Date.now()-new Date(w.date+'T12:00:00').getTime())<=7*864e5)
+  const weekTrend=last7w.length>=2?Number((last7w[last7w.length-1].value-last7w[0].value).toFixed(1)):null
+
+  // BMI
+  const hIn=((pf.height_ft||0)*12+(pf.height_in||0))
+  const bmi=hIn>0?((lw/(hIn*hIn))*703):null
+  const bmiCat=bmi?(bmi<18.5?{l:"Underweight",c:"#3498db"}:bmi<25?{l:"Normal",c:"#2ecc71"}:bmi<30?{l:"Overweight",c:"#f5c542"}:{l:"Obese",c:"#e74c3c"}):null
+
+  // Waist
+  const lWaist=data.waist.length?data.waist[data.waist.length-1].value:(pf.waist||null)
+  const waistChg=lWaist&&pf.waist?Number((lWaist-pf.waist).toFixed(1)):null
+  const waistRisk=lWaist?(pf.gender==='female'?(lWaist<32?{l:"Low Risk",c:"#2ecc71"}:lWaist<35?{l:"Moderate",c:"#f5c542"}:{l:"High Risk",c:"#e74c3c"}):(lWaist<37?{l:"Low Risk",c:"#2ecc71"}:lWaist<40?{l:"Moderate",c:"#f5c542"}:{l:"High Risk",c:"#e74c3c"})):null
+
+  // BP
+  const lBP=data.bp.length?data.bp[data.bp.length-1]:null
+  const bpCat=lBP?(lBP.sys<120&&lBP.dia<80?{l:"Normal",c:"#2ecc71"}:lBP.sys<130?{l:"Elevated",c:"#f5c542"}:lBP.sys<140?{l:"High Stage 1",c:"#e67e22"}:{l:"High Stage 2",c:"#e74c3c"}):null
+
+  // Blood sugar
+  const bsCat:any={normal:{l:"Normal",c:"#2ecc71"},"borderline / prediabetic":{l:"Prediabetic",c:"#f5c542"},diabetic:{l:"Diabetic",c:"#e74c3c"},"not sure":{l:"Unknown",c:"#8a8d97"}}
+  const bsInfo=bsCat[pf.blood_sugar]||{l:"Not set",c:"#8a8d97"}
+
+  // Fasting
+  const fastHrs=data.currentFast?((now-data.currentFast)/36e5):null
+  const lastFast=data.fastLog.length?data.fastLog[data.fastLog.length-1]:null
+  const totalFastH=Math.round(data.fastLog.reduce((s:number,f:any)=>s+(f.hours||0),0))
+
+  // Workouts
+  const wkStart=new Date();wkStart.setHours(0,0,0,0);wkStart.setDate(wkStart.getDate()-wkStart.getDay())
+  const wksWk=data.workoutLog.filter((w:any)=>new Date(w.date+'T12:00:00')>=wkStart).length
+  const lastWO=data.workoutLog.length?data.workoutLog[data.workoutLog.length-1]:null
+
+  // Supps
+  const suppList=pf?.gender==='female'?SUPPS_FEMALE:SUPPS_MALE
   const ts=data.suppChecks[today()]||[];const sp=Math.round((ts.length/suppList.length)*100)
-  return <div style={{display:"flex",flexDirection:"column",gap:16}}>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}}>
-      <SC label="Current Weight" value={lw+" lbs"} sub={(lost>0?"-":"")+Math.abs(lost)+" lbs"} color={lost>0?"#2ecc71":"#e8e6e1"} />
-      <SC label="Goal Progress" value={Math.round(pct)+"%"} sub={Math.round(diff-lost)+" lbs to go"} color="#f5c542" />
-      <SC label="Supplements Today" value={sp+"%"} sub={ts.length+"/"+suppList.length+" taken"} color={sp===100?"#2ecc71":"#e67e22"} />
+
+  // Nutrition
+  const todayF=data.foodLog.filter((f:any)=>f.date===today())
+  const calToday=Math.round(todayF.reduce((s:number,f:any)=>s+(f.cal||0),0))
+  const proToday=Math.round(todayF.reduce((s:number,f:any)=>s+(f.protein||0),0))
+  const fatToday=Math.round(todayF.reduce((s:number,f:any)=>s+(f.fat||0),0))
+
+  // Pace
+  const firstW=data.weights.length?new Date(data.weights[0].date+'T12:00:00'):null
+  const daysOn=firstW?Math.floor((Date.now()-firstW.getTime())/864e5):0
+  const last4w=data.weights.slice(-28)
+  const wklyLoss=last4w.length>=7?((last4w[0].value-last4w[last4w.length-1].value)/(last4w.length/7)):null
+  const daysToGoal=wklyLoss&&wklyLoss>0&&lost<diff?Math.round(((diff-lost)/wklyLoss)*7):null
+  const goalDate=daysToGoal?new Date(Date.now()+daysToGoal*864e5).toLocaleDateString('en-US',{month:'short',year:'numeric'}):null
+
+  const Tile=({label,val,unit="",sub="",color="#e8e6e1",badge=null as any,detail=""}:any)=>(
+    <div className="cd" style={{padding:"16px 18px"}}>
+      <div style={{fontSize:10,color:"#6a6d77",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:8}}>{label}</div>
+      <div style={{display:"flex",alignItems:"baseline",gap:4,flexWrap:"wrap"}}>
+        <div style={{fontSize:28,fontWeight:900,color,lineHeight:1}}>{val}</div>
+        {unit&&<div style={{fontSize:12,color:"#6a6d77"}}>{unit}</div>}
+      </div>
+      {sub&&<div style={{fontSize:12,color:"#8a8d97",marginTop:5}}>{sub}</div>}
+      {badge&&<div style={{marginTop:8,display:"inline-flex",background:badge.c+"22",color:badge.c,padding:"2px 10px",borderRadius:20,fontSize:10,fontWeight:700,border:"1px solid "+badge.c+"44"}}>{badge.l}</div>}
+      {detail&&<div style={{fontSize:11,color:"#6a6d77",marginTop:6,paddingTop:6,borderTop:"1px solid #2a2d37"}}>{detail}</div>}
     </div>
-    {pf.goals_own_words&&<div className="cd" style={{background:"linear-gradient(135deg,#1a1d27,#1e1f2a)"}}><h3 style={{fontSize:15,fontWeight:700,marginBottom:8}}>My Why</h3><p style={{fontSize:13,color:"#a0a3ad",lineHeight:1.6}}>{pf.goals_own_words}</p></div>}
+  )
+  const Sec=({title,children}:any)=>(
+    <div><div style={{fontSize:10,color:"#f5c542",fontWeight:700,textTransform:"uppercase",letterSpacing:"1.2px",marginBottom:10}}>{title}</div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(175px,1fr))",gap:10}}>{children}</div></div>
+  )
+
+  return <div style={{display:"flex",flexDirection:"column",gap:22}}>
+    <Sec title="Body Metrics">
+      <Tile label="Current Weight" val={lw} unit="lbs"
+        sub={weekTrend!==null?(weekTrend<0?`↓ ${Math.abs(weekTrend)} lbs this week`:`↑ ${weekTrend} lbs this week`):"Log weight to see trends"}
+        color={lost>0?"#2ecc71":"#e8e6e1"}
+        badge={lost>0?{l:`− ${lost} lbs lost`,c:"#2ecc71"}:null}
+        detail={`Start: ${sw} lbs · Goal: ${gw} lbs`}/>
+      <Tile label="Goal Progress" val={Math.round(pct)} unit="%"
+        sub={`${(diff-lost).toFixed(1)} lbs remaining`}
+        color="#f5c542"
+        badge={goalDate?{l:`Est. ${goalDate}`,c:"#f5c542"}:null}
+        detail={wklyLoss?`${wklyLoss.toFixed(1)} lbs/week current pace`:"Need more weigh-ins"}/>
+      <Tile label="BMI" val={bmi?bmi.toFixed(1):"—"}
+        sub={hIn>0?`${pf.height_ft||"?"}' ${pf.height_in||"?"}" · ${lw} lbs`:"Add height & weight"}
+        color={bmiCat?bmiCat.c:"#8a8d97"} badge={bmiCat}
+        detail="Healthy range: 18.5 – 24.9"/>
+      <Tile label="Waist" val={lWaist||"—"} unit={lWaist?"in":""}
+        sub={waistChg!==null?(waistChg<0?`↓ ${Math.abs(waistChg)} in from start`:`↑ ${waistChg} in from start`):"Log waist in Body Stats"}
+        color={waistRisk?waistRisk.c:"#8a8d97"} badge={waistRisk}
+        detail={pf.gender==='female'?"Goal: under 35 in (low risk)":"Goal: under 40 in (low risk)"}/>
+    </Sec>
+
+    <Sec title="Health Vitals">
+      <Tile label="Blood Pressure" val={lBP?`${lBP.sys}/${lBP.dia}`:"—"} unit={lBP?"mmHg":""}
+        sub={lBP?`Last: ${fmt(data.bp[data.bp.length-1].date)}`:"Log in Body Stats tab"}
+        color={bpCat?bpCat.c:"#8a8d97"} badge={bpCat}
+        detail="Optimal: below 120/80 mmHg"/>
+      <Tile label="Blood Sugar" val={pf.blood_sugar==="borderline / prediabetic"?"Prediabetic":pf.blood_sugar||"Not set"}
+        sub="From your health profile"
+        color={bsInfo.c} badge={bsInfo}
+        detail="Update any time in Profile"/>
+      <Tile label="Fasting Status" val={fastHrs?fastHrs.toFixed(1):(lastFast?lastFast.hours:"—")} unit="hrs"
+        sub={fastHrs?"🔥 Active fast in progress":lastFast?`Last: ${new Date(lastFast.start).toLocaleDateString()}`:"No fasts logged yet"}
+        color={fastHrs?"#f5c542":lastFast?"#3498db":"#8a8d97"}
+        badge={fastHrs?{l:"FASTING NOW",c:"#f5c542"}:null}
+        detail={`${data.fastLog.length} sessions · ${totalFastH}h total fasted`}/>
+      <Tile label="Program Duration" val={daysOn||"—"} unit={daysOn?"days":""}
+        sub={daysOn?`${Math.floor(daysOn/7)} weeks on program`:"Start logging to track"}
+        color="#a29bfe"
+        detail={firstW?`Started ${firstW.toLocaleDateString('en-US',{month:'long',day:'numeric'})}`:undefined}/>
+    </Sec>
+
+    <Sec title="Today">
+      <Tile label="Supplements" val={sp} unit="%"
+        sub={`${ts.length} of ${suppList.length} taken today`}
+        color={sp===100?"#2ecc71":sp>=50?"#f5c542":"#e74c3c"}
+        badge={sp===100?{l:"Complete ✓",c:"#2ecc71"}:null}/>
+      <Tile label="Calories" val={calToday||"—"} unit={calToday?"kcal":""}
+        sub={calToday?`Protein: ${proToday}g · Fat: ${fatToday}g`:"Log food in Food Log tab"}
+        color={calToday?"#e8e6e1":"#6a6d77"}
+        detail={proToday>100?"Good protein intake":"Aim for 0.8–1g protein per lb goal weight"}/>
+      <Tile label="Workouts This Week" val={wksWk} unit="sessions"
+        sub={lastWO?`Last: ${lastWO.day} · ${fmt(lastWO.date)}`:"Log workouts in Workouts tab"}
+        color={wksWk>=3?"#2ecc71":wksWk>=1?"#f5c542":"#6a6d77"}
+        badge={wksWk>=3?{l:"On Track",c:"#2ecc71"}:null}
+        detail={`${data.workoutLog.length} total sessions logged`}/>
+      <Tile label="Total Fasting" val={totalFastH} unit="hrs"
+        sub={data.fastLog.length?`Avg ${(totalFastH/data.fastLog.length).toFixed(1)}h per fast`:"Start fasting to see data"}
+        color="#3498db"
+        detail={`${data.fastLog.length} completed fasts`}/>
+    </Sec>
+
+    {(pf.goals?.length>0||pf.body_description)&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
+      <div style={{fontSize:10,color:"#f5c542",fontWeight:700,textTransform:"uppercase",letterSpacing:"1.2px"}}>Your Focus</div>
+      {pf.goals?.length>0&&<div className="cd" style={{padding:"14px 18px"}}><div style={{display:"flex",flexWrap:"wrap",gap:8}}>{(pf.goals||[]).map((g:string,i:number)=><div key={i} style={{background:"#f5c54218",border:"1px solid #f5c54235",color:"#f5c542",padding:"5px 12px",borderRadius:20,fontSize:12,fontWeight:600}}>{g}</div>)}</div></div>}
+      {pf.body_focus?.length>0&&<div className="cd" style={{padding:"14px 18px"}}><div style={{fontSize:11,color:"#8a8d97",marginBottom:6}}>Focus areas</div><div style={{display:"flex",flexWrap:"wrap",gap:6}}>{(pf.body_focus||[]).map((f:string,i:number)=><span key={i} style={{background:"#2a2d37",color:"#a0a3ad",padding:"3px 10px",borderRadius:12,fontSize:12}}>{f}</span>)}</div></div>}
+      {pf.body_description&&<div className="cd" style={{background:"linear-gradient(135deg,#1a1d27,#1e1f2a)",padding:"14px 18px"}}><div style={{fontSize:11,color:"#8a8d97",marginBottom:4}}>Body description</div><p style={{fontSize:13,color:"#a0a3ad",lineHeight:1.7,margin:0}}>{pf.body_description}</p></div>}
+      {pf.goals_own_words&&<div className="cd" style={{background:"linear-gradient(135deg,#1a1d27,#1e1f2a)",padding:"14px 18px"}}><div style={{fontSize:11,color:"#8a8d97",marginBottom:4}}>My why</div><p style={{fontSize:13,color:"#a0a3ad",lineHeight:1.7,margin:0}}>{pf.goals_own_words}</p></div>}
+    </div>}
   </div>
 }
 
@@ -504,12 +645,148 @@ function SexTab({data,user,refresh,pf}:any) {
   </div>
 }
 
+// ─── LABS & DOCS ─────────────────────────────────────────
+function LabsTab({user,pf,medDocs,refreshDocs}:any) {
+  const [view,setView]=useState<'list'|'add'|'detail'>('list')
+  const [docType,setDocType]=useState('bloodwork')
+  const [pasteText,setPasteText]=useState('')
+  const [docName,setDocName]=useState('')
+  const [parsing,setParsing]=useState(false)
+  const [status,setStatus]=useState('')
+  const [selected,setSelected]=useState<any>(null)
+  const fileRef=useRef<HTMLInputElement>(null)
+  const DOC_TYPES=['bloodwork','hormone panel','doctor report','imaging','other']
+
+  const parseAndSave=async(textIn:string,name:string,extraVals:any={})=>{
+    setParsing(true);setStatus('AI is analyzing your document...')
+    try{
+      const res=await fetch('/api/parse-labs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:textIn,docType,gender:pf.gender,...extraVals})})
+      const result=await res.json()
+      const doc=await db.addMedicalDoc(user.id,{file_name:name||`${docType} — ${new Date().toLocaleDateString()}`,doc_type:docType,raw_text:textIn||result.extractedText||'',parsed_values:result.parsed||[],notes:result.summary||''})
+      if(doc){refreshDocs();setPasteText('');setDocName('');setStatus('✓ Saved!');setTimeout(()=>{setView('list');setStatus('')},1200)}
+      else setStatus('Error saving. Check your Supabase setup.')
+    }catch{setStatus('Error parsing. Try again.')}
+    finally{setParsing(false)}
+  }
+
+  const handleFile=(e:any)=>{
+    const file=e.target.files[0];if(!file)return
+    if(file.type.startsWith('image/')){
+      setStatus('Reading image...')
+      const reader=new FileReader()
+      reader.onload=async(ev)=>{
+        const b64=ev.target?.result as string
+        await parseAndSave('',file.name,{image:b64})
+      }
+      reader.readAsDataURL(file)
+    } else if(file.type==='text/plain'){
+      const reader=new FileReader()
+      reader.onload=(ev)=>{setPasteText(ev.target?.result as string);setDocName(file.name);setStatus('')}
+      reader.readAsText(file)
+    } else {
+      setStatus('Upload JPG/PNG image or .txt file. For PDFs, copy text and paste below.')
+    }
+    e.target.value=''
+  }
+
+  const statusColor=( s:string)=>s==='normal'?'#2ecc71':s==='high'||s==='low'?'#f5c542':s==='critical'?'#e74c3c':'#8a8d97'
+
+  const renderParsed=(parsed:any)=>{
+    const items=Array.isArray(parsed)?parsed:[]
+    if(!items.length)return<p style={{fontSize:13,color:"#6a6d77"}}>No structured values extracted. View original text below.</p>
+    const normal=items.filter((v:any)=>v.status==='normal')
+    const flagged=items.filter((v:any)=>v.status&&v.status!=='normal')
+    const Row=({item}:any)=>(
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 12px",background:"#12141c",borderRadius:8,gap:12}}>
+        <div><div style={{fontSize:13,fontWeight:600}}>{item.name}</div>{item.reference_range&&<div style={{fontSize:11,color:"#4a4d57"}}>Ref: {item.reference_range}</div>}</div>
+        <div style={{textAlign:"right",flexShrink:0}}>
+          <div style={{fontSize:14,fontWeight:800,color:statusColor(item.status||'')}}>{item.value}{item.unit?' '+item.unit:''}</div>
+          {item.status&&<div style={{fontSize:9,color:statusColor(item.status),textTransform:"uppercase",fontWeight:700,letterSpacing:"0.5px"}}>{item.status}</div>}
+        </div>
+      </div>
+    )
+    return<div style={{display:"flex",flexDirection:"column",gap:6}}>
+      {flagged.length>0&&<><div style={{fontSize:10,color:"#f5c542",fontWeight:700,textTransform:"uppercase",letterSpacing:"1px",marginBottom:2}}>Flagged ({flagged.length})</div>{flagged.map((v:any,i:number)=><Row key={i} item={v}/>)}</>}
+      {normal.length>0&&<><div style={{fontSize:10,color:"#2ecc71",fontWeight:700,textTransform:"uppercase",letterSpacing:"1px",marginTop:4,marginBottom:2}}>Normal ({normal.length})</div>{normal.map((v:any,i:number)=><Row key={i} item={v}/>)}</>}
+    </div>
+  }
+
+  if(view==='detail'&&selected)return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",gap:10,alignItems:"center"}}>
+        <button className="bt bto bts" onClick={()=>setView('list')}>← Back</button>
+        <div><div style={{fontSize:16,fontWeight:700}}>{selected.file_name}</div><div style={{fontSize:11,color:"#6a6d77"}}>{new Date(selected.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})} · {selected.doc_type}</div></div>
+        <button className="bt bts" style={{marginLeft:"auto",borderColor:"#e74c3c",color:"#e74c3c",background:"transparent",border:"1px solid #e74c3c"}} onClick={async()=>{await db.deleteMedicalDoc(selected.id);refreshDocs();setView('list')}}>Delete</button>
+      </div>
+      {selected.notes&&<div className="cd" style={{background:"linear-gradient(135deg,#141720,#1a1d27)"}}><div style={{fontSize:10,color:"#f5c542",fontWeight:700,textTransform:"uppercase",letterSpacing:"1px",marginBottom:8}}>AI Analysis</div><p style={{fontSize:13,color:"#a0a3ad",lineHeight:1.7,margin:0}}>{selected.notes}</p></div>}
+      <div className="cd"><div style={{fontSize:13,fontWeight:700,marginBottom:12}}>Extracted Biomarkers</div>{renderParsed(selected.parsed_values)}</div>
+      {selected.raw_text&&<div className="cd"><div style={{fontSize:12,fontWeight:700,marginBottom:8,color:"#6a6d77"}}>Original Text</div><pre style={{fontSize:11,color:"#6a6d77",whiteSpace:"pre-wrap",lineHeight:1.6,maxHeight:200,overflow:"auto",margin:0}}>{selected.raw_text}</pre></div>}
+    </div>
+  )
+
+  return<div style={{display:"flex",flexDirection:"column",gap:14}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10}}>
+      <div><h2 style={{fontSize:18,fontWeight:800,margin:0}}>Labs & Medical Docs</h2><p style={{fontSize:12,color:"#6a6d77",marginTop:4,marginBottom:0}}>Upload bloodwork or reports · AI extracts biomarkers · Personalizes your plan</p></div>
+      <button className="bt bts" onClick={()=>setView(view==='add'?'list':'add')}>{view==='add'?'Cancel':'+ Add Document'}</button>
+    </div>
+
+    {view==='add'&&<div className="cd" style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div><div className="lb">Document Type</div><div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:6}}>{DOC_TYPES.map(t=><button key={t} onClick={()=>setDocType(t)} style={{padding:"6px 14px",borderRadius:20,border:"1px solid "+(docType===t?"#f5c542":"#2a2d37"),background:docType===t?"#f5c54220":"#12141c",color:docType===t?"#f5c542":"#6a6d77",fontSize:12,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:600,transition:"all .15s"}}>{t}</button>)}</div></div>
+      <div><div className="lb">Document Name</div><input className="inp" value={docName} onChange={e=>setDocName(e.target.value)} placeholder={`e.g. "Annual Labs — April 2026"`}/></div>
+      <div style={{border:"2px dashed #2a2d37",borderRadius:10,padding:24,textAlign:"center",cursor:"pointer",transition:"border-color .2s"}} onClick={()=>fileRef.current?.click()} onMouseOver={e=>(e.currentTarget.style.borderColor='#f5c542')} onMouseOut={e=>(e.currentTarget.style.borderColor='#2a2d37')}>
+        <input ref={fileRef} type="file" accept="image/*,.txt" style={{display:"none"}} onChange={handleFile}/>
+        <div style={{fontSize:32,marginBottom:8}}>📄</div>
+        <div style={{fontSize:14,fontWeight:600}}>Upload Image or Text File</div>
+        <div style={{fontSize:11,color:"#6a6d77",marginTop:4}}>JPG / PNG photo of your report · AI reads it with vision</div>
+        <div style={{fontSize:11,color:"#4a4d57",marginTop:2}}>For PDFs: open in Adobe/Preview → Select All → Copy → Paste below</div>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:10}}><div style={{flex:1,height:1,background:"#2a2d37"}}/><span style={{fontSize:10,color:"#4a4d57",fontWeight:700,letterSpacing:"1px"}}>OR PASTE TEXT</span><div style={{flex:1,height:1,background:"#2a2d37"}}/></div>
+      <div>
+        <div className="lb">Paste Report Text</div>
+        <textarea className="inp" style={{minHeight:160,resize:"vertical",marginTop:6,fontFamily:"monospace",fontSize:11,lineHeight:1.6}} value={pasteText} onChange={e=>setPasteText(e.target.value)} placeholder={"Paste your bloodwork or report text here...\n\nExample:\nGlucose: 94 mg/dL  (65-99)  ✓\nHbA1c: 5.4%  (<5.7)  ✓\nTotal Cholesterol: 182 mg/dL  (<200)  ✓\nLDL: 112 mg/dL  (<130)  ✓\nHDL: 52 mg/dL  (>40)  ✓\nTriglycerides: 88 mg/dL  (<150)  ✓\nTestosterone: 520 ng/dL  (264-916)  ✓\nVitamin D: 28 ng/mL  (30-100)  LOW"}/>
+      </div>
+      {status&&<div style={{padding:"10px 14px",borderRadius:8,background:status.includes('Error')?'#e74c3c20':status.includes('✓')?'#2ecc7120':'#f5c54220',color:status.includes('Error')?'#e74c3c':status.includes('✓')?'#2ecc71':'#f5c542',fontSize:13}}>{status}</div>}
+      <button className="bt" style={{width:"100%"}} onClick={()=>parseAndSave(pasteText,docName)} disabled={!pasteText.trim()||parsing}>{parsing?'AI is analyzing...':'🧬 Analyze & Save'}</button>
+    </div>}
+
+    {medDocs.length===0&&view!=='add'&&<div className="cd" style={{textAlign:"center",padding:48}}>
+      <div style={{fontSize:40,marginBottom:12}}>🧬</div>
+      <div style={{fontSize:16,fontWeight:700,marginBottom:8}}>No Documents Yet</div>
+      <p style={{fontSize:13,color:"#6a6d77",lineHeight:1.6,marginBottom:20}}>Upload bloodwork or doctor reports. AI extracts all biomarkers, flags abnormal values, and uses the data to fine-tune your supplement, diet, and training plan.</p>
+      <button className="bt" onClick={()=>setView('add')}>+ Add Your First Document</button>
+    </div>}
+
+    {medDocs.length>0&&view!=='add'&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
+      <div style={{fontSize:10,color:"#f5c542",fontWeight:700,textTransform:"uppercase",letterSpacing:"1.2px"}}>{medDocs.length} document{medDocs.length!==1?'s':''} on file</div>
+      {medDocs.map((doc:any,i:number)=>{
+        const items=Array.isArray(doc.parsed_values)?doc.parsed_values:[]
+        const flagged=items.filter((v:any)=>v.status&&v.status!=='normal').length
+        return<div key={i} className="cd" style={{cursor:"pointer",padding:"14px 18px"}} onClick={()=>{setSelected(doc);setView('detail')}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12}}>
+            <div style={{flex:1}}>
+              <div style={{fontSize:14,fontWeight:700}}>{doc.file_name}</div>
+              <div style={{fontSize:11,color:"#6a6d77",marginTop:2}}>{new Date(doc.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})} · {doc.doc_type}</div>
+              {doc.notes&&<div style={{fontSize:12,color:"#a0a3ad",marginTop:6,lineHeight:1.5}}>{doc.notes.substring(0,140)}{doc.notes.length>140?'…':''}</div>}
+            </div>
+            <div style={{textAlign:"right",flexShrink:0}}>
+              {items.length>0&&<div style={{fontSize:11,color:"#6a6d77"}}>{items.length} values</div>}
+              {flagged>0&&<div style={{marginTop:4,background:"#f5c54220",color:"#f5c542",padding:"2px 8px",borderRadius:10,fontSize:10,fontWeight:700}}>{flagged} flagged</div>}
+              {flagged===0&&items.length>0&&<div style={{marginTop:4,background:"#2ecc7120",color:"#2ecc71",padding:"2px 8px",borderRadius:10,fontSize:10,fontWeight:700}}>All normal</div>}
+            </div>
+          </div>
+        </div>
+      })}
+    </div>}
+  </div>
+}
+
 // ─── AI COACH ────────────────────────────────────────────
-function CoachTab({pf, userId}:any) {
+function CoachTab({pf, userId, medDocs}:any) {
   const KEY = `kt_coach_${userId||'default'}`
   const [msgs,setMsgs]=useState<any[]>(()=>{try{return JSON.parse(localStorage.getItem(KEY)||'[]')}catch{return []}})
   const [input,setInput]=useState("");const [busy,setBusy]=useState(false);const ref=useRef<HTMLDivElement>(null)
-  const SYS="You are KEY COACH, an elite health transformation advisor for "+pf.name+". Gender: "+(pf.gender||"not specified")+". Age "+(pf.age||"?")+", "+(pf.height_ft||"?")+"ft"+(pf.height_in||"?")+"in, "+(pf.weight||"?")+"lbs (goal "+(pf.goal_weight||"?")+"). BP "+(pf.bp_sys||"?")+"/"+(pf.bp_dia||"?")+". Blood sugar: "+pf.blood_sugar+". Diet: "+pf.diet_style+". Fasting: "+pf.fasting_plan+". Injuries: "+(pf.injuries||"none")+". Allergies: "+(pf.allergies||"none")+". Goals: "+(pf.goals||[]).join(", ")+". "+(pf.body_type?"Body type: "+pf.body_type+". ":"")+(pf.body_focus?.length?"Focus areas: "+(pf.body_focus||[]).join(", ")+". ":"")+(pf.body_description?"Body description: "+pf.body_description+". ":"")+(pf.gender==='female'?"Female health — PCOS: "+(pf.pcos?"yes":"no")+", Menopause: "+(pf.menopause_stage||"none")+(pf.hormone_concerns?", Hormone concerns: "+pf.hormone_concerns:"")+". ":"")+(pf.goals_own_words?"MOTIVATION: "+pf.goals_own_words+". ":"")+(pf.specific_concerns?"CONCERNS: "+pf.specific_concerns+". ":"")+(pf.additional_info?"CONTEXT: "+pf.additional_info+". ":"")+"YOUR EXPERTISE: health/fitness, fasting, keto/carnivore/mediterranean nutrition, bodybuilding, female hormonal health, natural medicine, supplements, red light therapy, biology, culinary arts, and The Bible. Style: direct, no-BS, specific numbers, scripture when natural, actionable. Tailor all advice to the user's gender. IMPORTANT: Chat history is automatically saved on the user's device. When asked to save or remember this conversation, confirm it is already saved automatically."
+  const labContext=(medDocs||[]).slice(0,3).map((d:any)=>`[${d.doc_type} — ${new Date(d.created_at).toLocaleDateString()}]: ${d.notes||''}${Array.isArray(d.parsed_values)&&d.parsed_values.length?` Key values: ${d.parsed_values.filter((v:any)=>v.status!=='normal').slice(0,8).map((v:any)=>`${v.name} ${v.value}${v.unit?' '+v.unit:''} (${v.status})`).join(', ')}`:''}`.trim()).filter(Boolean).join('\n')
+  const SYS="You are KEY COACH, an elite health transformation advisor for "+pf.name+". Gender: "+(pf.gender||"not specified")+". Age "+(pf.age||"?")+", "+(pf.height_ft||"?")+"ft"+(pf.height_in||"?")+"in, "+(pf.weight||"?")+"lbs (goal "+(pf.goal_weight||"?")+"). BP "+(pf.bp_sys||"?")+"/"+(pf.bp_dia||"?")+". Blood sugar: "+pf.blood_sugar+". Diet: "+pf.diet_style+". Fasting: "+pf.fasting_plan+". Injuries: "+(pf.injuries||"none")+". Allergies: "+(pf.allergies||"none")+". Goals: "+(pf.goals||[]).join(", ")+". "+(pf.body_type?"Body type: "+pf.body_type+". ":"")+(pf.body_focus?.length?"Focus areas: "+(pf.body_focus||[]).join(", ")+". ":"")+(pf.body_description?"Body description: "+pf.body_description+". ":"")+(pf.gender==='female'?"Female health — PCOS: "+(pf.pcos?"yes":"no")+", Menopause: "+(pf.menopause_stage||"none")+(pf.hormone_concerns?", Hormone concerns: "+pf.hormone_concerns:"")+". ":"")+(pf.goals_own_words?"MOTIVATION: "+pf.goals_own_words+". ":"")+(pf.specific_concerns?"CONCERNS: "+pf.specific_concerns+". ":"")+(pf.additional_info?"CONTEXT: "+pf.additional_info+". ":"")+(labContext?"MEDICAL LAB RESULTS:\n"+labContext+"\n":"")+"YOUR EXPERTISE: health/fitness, fasting, keto/carnivore/mediterranean nutrition, bodybuilding, female hormonal health, natural medicine, supplements, lab result interpretation, red light therapy, biology, culinary arts, and The Bible. Style: direct, no-BS, specific numbers, reference lab values when relevant, scripture when natural, actionable. Tailor all advice to the user's gender and lab results. IMPORTANT: Chat history is automatically saved on the user's device. When asked to save or remember this conversation, confirm it is already saved automatically."
 
   // Auto-save chat to localStorage on every message change
   useEffect(()=>{try{localStorage.setItem(KEY,JSON.stringify(msgs))}catch{}},[msgs,KEY])

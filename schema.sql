@@ -169,6 +169,18 @@ create table if not exists public.cycle_tracking (
   cycle_start date
 );
 
+-- 12. MEDICAL DOCS (bloodwork, lab reports, doctor notes)
+create table if not exists public.medical_docs (
+  id bigint generated always as identity primary key,
+  user_id uuid references auth.users on delete cascade not null,
+  file_name text not null,
+  doc_type text default 'general',
+  raw_text text default '',
+  parsed_values jsonb default '[]',
+  notes text default '',
+  created_at timestamptz default now()
+);
+
 -- ============================================
 -- ROW LEVEL SECURITY
 -- ============================================
@@ -184,6 +196,15 @@ alter table public.workout_log enable row level security;
 alter table public.supplement_checks enable row level security;
 alter table public.sex_log enable row level security;
 alter table public.cycle_tracking enable row level security;
+alter table public.medical_docs enable row level security;
+
+drop policy if exists "Users can view own medical_docs" on public.medical_docs;
+drop policy if exists "Users can insert own medical_docs" on public.medical_docs;
+drop policy if exists "Users can delete own medical_docs" on public.medical_docs;
+create policy "Users can view own medical_docs" on public.medical_docs for select using (auth.uid() = user_id);
+create policy "Users can insert own medical_docs" on public.medical_docs for insert with check (auth.uid() = user_id);
+create policy "Users can delete own medical_docs" on public.medical_docs for delete using (auth.uid() = user_id);
+create index if not exists idx_medical_docs_user on public.medical_docs (user_id, created_at desc);
 
 -- Drop existing policies before recreating (safe re-run)
 drop policy if exists "Users can view own profile" on public.profiles;
