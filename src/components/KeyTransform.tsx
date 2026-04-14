@@ -384,12 +384,13 @@ function RatingPick({label,value,onChange,color,lo,hi}:any) { return <div style=
 function OverviewTab({data,pf,sw,gw}:any) {
   const lw=data.weights.length?data.weights[data.weights.length-1].value:sw
   const lost=sw-lw;const diff=sw-gw;const pct=diff>0?Math.min(100,(lost/diff)*100):0
-  const ts=data.suppChecks[today()]||[];const sp=Math.round((ts.length/SUPPS.length)*100)
+  const suppList = pf?.gender==='female' ? SUPPS_FEMALE : SUPPS_MALE
+  const ts=data.suppChecks[today()]||[];const sp=Math.round((ts.length/suppList.length)*100)
   return <div style={{display:"flex",flexDirection:"column",gap:16}}>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}}>
       <SC label="Current Weight" value={lw+" lbs"} sub={(lost>0?"-":"")+Math.abs(lost)+" lbs"} color={lost>0?"#2ecc71":"#e8e6e1"} />
       <SC label="Goal Progress" value={Math.round(pct)+"%"} sub={Math.round(diff-lost)+" lbs to go"} color="#f5c542" />
-      <SC label="Supplements Today" value={sp+"%"} sub={ts.length+"/"+SUPPS.length+" taken"} color={sp===100?"#2ecc71":"#e67e22"} />
+      <SC label="Supplements Today" value={sp+"%"} sub={ts.length+"/"+suppList.length+" taken"} color={sp===100?"#2ecc71":"#e67e22"} />
     </div>
     {pf.goals_own_words&&<div className="cd" style={{background:"linear-gradient(135deg,#1a1d27,#1e1f2a)"}}><h3 style={{fontSize:15,fontWeight:700,marginBottom:8}}>My Why</h3><p style={{fontSize:13,color:"#a0a3ad",lineHeight:1.6}}>{pf.goals_own_words}</p></div>}
   </div>
