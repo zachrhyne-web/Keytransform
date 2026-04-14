@@ -8,14 +8,25 @@ const TABS = ["Overview","Progress","Fasting","Food Log","Body Stats","Workouts"
 const today = () => new Date().toISOString().split("T")[0]
 const fmt = (d: string) => new Date(d+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})
 
-const GOAL_OPTIONS = [
+const GOAL_OPTIONS_SHARED = [
   "Lose weight / fat loss","Reverse prediabetes / blood sugar","Lower blood pressure",
-  "Boost testosterone / erections","Fertility / sperm count","Prostate relief",
-  "Athletic / muscular look","Reduce gynecomastia","Improve skin / look younger",
-  "Mental clarity / energy","Better sleep",
+  "Athletic / muscular look","Improve skin / look younger","Mental clarity / energy",
+  "Better sleep","Reduce stress / cortisol","Build strength & muscle",
+]
+const GOAL_OPTIONS_MALE = [
+  "Boost testosterone / erections","Fertility / sperm count","Prostate relief","Reduce gynecomastia",
+]
+const GOAL_OPTIONS_FEMALE = [
+  "Hormonal balance / cycle regulation","PCOS management","Perimenopause / menopause support",
+  "Bone density / prevent osteoporosis","Pelvic floor health","Female fertility",
+  "Reduce bloating / water retention","Postpartum recovery","Reduce PMS symptoms",
+]
+const getGoalOptions = (gender: string) => [
+  ...GOAL_OPTIONS_SHARED,
+  ...(gender === 'female' ? GOAL_OPTIONS_FEMALE : GOAL_OPTIONS_MALE),
 ]
 
-const SUPPS = [
+const SUPPS_MALE = [
   {name:"Vitamin D3+K2",dose:"5,000 IU+100mcg",time:"Morning w/ fat",why:"Testosterone, immunity, mood"},
   {name:"Zinc Picolinate",dose:"50mg",time:"Evening w/ food",why:"Testosterone, sperm, prostate"},
   {name:"Magnesium Glycinate",dose:"400mg",time:"Before bed",why:"Sleep, BP, fasting support"},
@@ -29,21 +40,46 @@ const SUPPS = [
   {name:"Creatine",dose:"5g",time:"Any time",why:"Strength, recovery"},
   {name:"Electrolytes",dose:"See fasting tab",time:"During fasts",why:"Prevent cramping"},
 ]
+const SUPPS_FEMALE = [
+  {name:"Vitamin D3+K2",dose:"5,000 IU+100mcg",time:"Morning w/ fat",why:"Bone density, immunity, mood"},
+  {name:"Magnesium Glycinate",dose:"400mg",time:"Before bed",why:"PMS, sleep, muscle recovery"},
+  {name:"Fish Oil (EPA/DHA)",dose:"3g combined",time:"With meals",why:"Inflammation, hormones, skin"},
+  {name:"Calcium + Vitamin D",dose:"1,000mg + 1,000IU",time:"With meals",why:"Bone density, muscle function"},
+  {name:"Methylfolate (B9)",dose:"400mcg",time:"Morning",why:"Hormonal health, fertility, mood"},
+  {name:"Maca Root",dose:"1,500mg",time:"Morning",why:"Hormonal balance, libido, energy"},
+  {name:"Vitex / Chasteberry",dose:"400mg",time:"Morning",why:"Cycle regulation, PMS relief"},
+  {name:"Evening Primrose Oil",dose:"1,000mg",time:"Cycle days 1–14",why:"Hormonal balance, PMS, skin"},
+  {name:"Berberine",dose:"500mg 2x/day",time:"Before meals",why:"Blood sugar, PCOS support"},
+  {name:"Ashwagandha KSM-66",dose:"600mg",time:"Morning",why:"Cortisol, stress, energy"},
+  {name:"Zinc Picolinate",dose:"25mg",time:"Evening w/ food",why:"Immunity, skin, hormones"},
+  {name:"Iron (if low)",dose:"18mg",time:"Empty stomach w/ vit C",why:"Energy, blood health"},
+  {name:"Creatine",dose:"3–5g",time:"Any time",why:"Strength, cognitive function"},
+  {name:"Electrolytes",dose:"See fasting tab",time:"During fasts",why:"Prevent cramping"},
+]
 
-const WK: Record<string, {ex:string,sets:string,note:string}[]> = {
+const WK_MALE: Record<string, {ex:string,sets:string,note:string}[]> = {
   "Push Day":[{ex:"DB Floor Press",sets:"4x10",note:"Shoulder-safe"},{ex:"DB Overhead Press",sets:"3x10",note:"Seated"},{ex:"Push-Ups / Band",sets:"3x15",note:"Band around back"},{ex:"Tricep Extensions",sets:"3x12",note:"Single DB"},{ex:"Lateral Raises",sets:"3x15",note:"Light, slow"}],
   "Pull Day":[{ex:"DB Bent-Over Rows",sets:"4x10",note:"Squeeze lats"},{ex:"Band Pull-Aparts",sets:"4x20",note:"Rear delts"},{ex:"DB Curls",sets:"3x12",note:"Alternate"},{ex:"Face Pulls (band)",sets:"3x15",note:"External rotation"},{ex:"DB Shrugs",sets:"3x15",note:"Hold top 2s"}],
   "Legs & Core":[{ex:"DB Romanian Deadlift",sets:"4x10",note:"Hamstrings & glutes"},{ex:"Hip Thrusts",sets:"4x12",note:"Pause top"},{ex:"Band Walks",sets:"3x15/side",note:"Glute med"},{ex:"Plank Hold",sets:"3x45s",note:"Squeeze"},{ex:"Dead Bugs",sets:"3x10/side",note:"Slow"},{ex:"Farmer Carries",sets:"3x40yd",note:"Heavy, tall"}],
 }
+const WK_FEMALE: Record<string, {ex:string,sets:string,note:string}[]> = {
+  "Glute & Legs":[{ex:"Hip Thrusts",sets:"4x15",note:"Squeeze at top 2s"},{ex:"Sumo DB Squat",sets:"4x12",note:"Wide stance, toes out"},{ex:"DB Romanian Deadlift",sets:"3x12",note:"Hamstrings & glutes"},{ex:"Band Walks",sets:"3x20/side",note:"Glute med activation"},{ex:"Donkey Kicks",sets:"3x15/side",note:"Controlled, squeeze top"},{ex:"Calf Raises",sets:"3x20",note:"Full range of motion"}],
+  "Upper Body & Core":[{ex:"DB Shoulder Press",sets:"3x12",note:"Seated, controlled"},{ex:"DB Bent-Over Rows",sets:"3x12",note:"Squeeze shoulder blades"},{ex:"Lateral Raises",sets:"3x15",note:"Light, slow, feel the burn"},{ex:"Tricep Kickbacks",sets:"3x15",note:"Full extension"},{ex:"Plank Hold",sets:"3x45s",note:"Brace core"},{ex:"Dead Bugs",sets:"3x10/side",note:"Lower back on floor"}],
+  "Full Body Burn":[{ex:"DB Squat to Press",sets:"3x12",note:"Explosive up"},{ex:"Reverse Lunges",sets:"3x12/side",note:"Step back, knee soft"},{ex:"Push-Up (or band)",sets:"3x10",note:"Modify as needed"},{ex:"DB Row",sets:"3x12/side",note:"Single arm"},{ex:"Hip Thrust",sets:"3x15",note:"Bodyweight or loaded"},{ex:"Mountain Climbers",sets:"3x20",note:"Fast, core tight"}],
+}
+const WK = (gender: string) => gender === 'female' ? WK_FEMALE : WK_MALE
 
 const defaultProfile = (): any => ({
+  gender:"male",
   name:"",age:null,height_ft:null,height_in:null,weight:null,goal_weight:null,waist:null,timeline:6,
   bp_sys:null,bp_dia:null,blood_sugar:"normal",sleep_apnea:false,cpap:false,
   prostate_symptoms:false,fertility_goal:false,medications:"",allergies:"",health_history:"",
+  pcos:false,menopause_stage:"none",hormone_concerns:"",
   work_schedule:"",sleep_hours:7,tobacco:"none",alcohol:"none",cannabis:"none",
   current_diet:"",caffeine:"",diet_style:"keto-carnivore",fasting_plan:"48h-weekly",
   foods_love:"",foods_wont_eat:"",cooking_level:"medium",kitchen_gear:[],budget:120,
   stores:[],location:"",lifting_experience:"some",injuries:"",equipment:[],gym_access:false,
+  body_type:"",body_focus:[],body_description:"",
   goals:[],top_goals:[],goals_own_words:"",specific_concerns:"",additional_info:"",
   profile_completed:false,
 })
@@ -168,10 +204,10 @@ export default function KeyTransform() {
             {tab===2 && <FastingTab data={data} user={user} refresh={refreshData} />}
             {tab===3 && <FoodLogTab data={data} user={user} refresh={refreshData} />}
             {tab===4 && <BodyStatsTab data={data} user={user} refresh={refreshData} />}
-            {tab===5 && <WorkoutTab data={data} user={user} refresh={refreshData} />}
-            {tab===6 && <SuppTab data={data} user={user} refresh={refreshData} />}
+            {tab===5 && <WorkoutTab data={data} user={user} refresh={refreshData} pf={profile} />}
+            {tab===6 && <SuppTab data={data} user={user} refresh={refreshData} pf={profile} />}
             {tab===7 && <MealTab pf={profile} />}
-            {tab===8 && <SexTab data={data} user={user} refresh={refreshData} />}
+            {tab===8 && <SexTab data={data} user={user} refresh={refreshData} pf={profile} />}
             {tab===9 && <CoachTab pf={profile} userId={user?.id} />}
           </div>
         </>
@@ -237,7 +273,10 @@ function WizardScreen({ profile, user, onComplete }: any) {
   const Chip = ({label,on,onClick}:{label:string,on:boolean,onClick:()=>void}) => <button className={"chip"+(on?" on":"")} onClick={onClick}>{label}</button>
 
   const steps = [
+    // ── Step 0: About You ──────────────────────────────────
     <div key="basics" style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div><div className="lb">I am a</div><div style={{display:"flex",gap:8}}><Chip label="Male" on={p.gender==='male'} onClick={()=>update("gender","male")}/><Chip label="Female" on={p.gender==='female'} onClick={()=>update("gender","female")}/></div></div>
+      <div><div className="lb">Name</div><input className="inp" value={p.name} onChange={e=>update("name",e.target.value)} placeholder="First name" /></div>
       <div><div className="lb">Age</div><input className="inp" type="number" placeholder="Your age" value={p.age||""} onChange={e=>update("age",e.target.value?Number(e.target.value):null)} /></div>
       <div style={{display:"flex",gap:10}}>
         <div style={{flex:1}}><div className="lb">Height (ft)</div><input className="inp" type="number" value={p.height_ft||""} onChange={e=>update("height_ft",e.target.value?Number(e.target.value):null)} /></div>
@@ -248,8 +287,8 @@ function WizardScreen({ profile, user, onComplete }: any) {
         <div style={{flex:1}}><div className="lb">Goal Weight (lbs)</div><input className="inp" type="number" value={p.goal_weight||""} onChange={e=>update("goal_weight",e.target.value?Number(e.target.value):null)} /></div>
       </div>
       <div><div className="lb">Waist at navel (inches)</div><input className="inp" type="number" step="0.5" value={p.waist||""} onChange={e=>update("waist",e.target.value?Number(e.target.value):null)} /></div>
-      <div><div className="lb">Name</div><input className="inp" value={p.name} onChange={e=>update("name",e.target.value)} placeholder="First name" /></div>
     </div>,
+    // ── Step 1: Health Status ──────────────────────────────
     <div key="health" style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{display:"flex",gap:10}}>
         <div style={{flex:1}}><div className="lb">BP Systolic</div><input className="inp" type="number" value={p.bp_sys||""} onChange={e=>update("bp_sys",e.target.value?Number(e.target.value):null)} /></div>
@@ -258,26 +297,59 @@ function WizardScreen({ profile, user, onComplete }: any) {
       <div><div className="lb">Blood Sugar</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{["normal","borderline / prediabetic","diabetic","not sure"].map(v=><Chip key={v} label={v} on={p.blood_sugar===v} onClick={()=>update("blood_sugar",v)}/>)}</div></div>
       <div><div className="lb">Sleep Apnea?</div><div style={{display:"flex",gap:8}}><Chip label="Yes" on={p.sleep_apnea} onClick={()=>update("sleep_apnea",true)}/><Chip label="No" on={!p.sleep_apnea} onClick={()=>update("sleep_apnea",false)}/></div></div>
       <div><div className="lb">Fertility Goal?</div><div style={{display:"flex",gap:8}}><Chip label="Yes" on={p.fertility_goal} onClick={()=>update("fertility_goal",true)}/><Chip label="No" on={!p.fertility_goal} onClick={()=>update("fertility_goal",false)}/></div></div>
+      {p.gender==='female' && <>
+        <div style={{padding:"12px 14px",borderRadius:8,background:"#f5c54210",border:"1px solid #f5c54230"}}><div style={{fontSize:12,color:"#f5c542",fontWeight:600,marginBottom:10}}>FEMALE HEALTH</div>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div><div className="lb">PCOS / Irregular Cycles?</div><div style={{display:"flex",gap:8}}><Chip label="Yes / PCOS" on={p.pcos} onClick={()=>update("pcos",true)}/><Chip label="No / Regular" on={!p.pcos} onClick={()=>update("pcos",false)}/></div></div>
+            <div><div className="lb">Menopause Stage</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{["none","perimenopause","menopause","post-menopause"].map(v=><Chip key={v} label={v} on={p.menopause_stage===v} onClick={()=>update("menopause_stage",v)}/>)}</div></div>
+            <div><div className="lb">Hormone Concerns</div><input className="inp" value={p.hormone_concerns||""} onChange={e=>update("hormone_concerns",e.target.value)} placeholder="Irregular cycles, hot flashes, mood swings, low libido..." /></div>
+          </div>
+        </div>
+      </>}
+      {p.gender==='male' && <div><div className="lb">Prostate Symptoms?</div><div style={{display:"flex",gap:8}}><Chip label="Yes" on={p.prostate_symptoms} onClick={()=>update("prostate_symptoms",true)}/><Chip label="No" on={!p.prostate_symptoms} onClick={()=>update("prostate_symptoms",false)}/></div></div>}
       <div><div className="lb">Medications</div><input className="inp" value={p.medications} onChange={e=>update("medications",e.target.value)} placeholder="Or 'none'" /></div>
       <div><div className="lb">Allergies</div><input className="inp" value={p.allergies} onChange={e=>update("allergies",e.target.value)} placeholder="Or 'none'" /></div>
     </div>,
+    // ── Step 2: Diet & Training ────────────────────────────
     <div key="diet" style={{display:"flex",flexDirection:"column",gap:14}}>
-      <div><div className="lb">Diet Style</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{["keto-carnivore","strict carnivore","keto","low carb","no preference"].map(v=><Chip key={v} label={v} on={p.diet_style===v} onClick={()=>update("diet_style",v)}/>)}</div></div>
+      <div><div className="lb">Diet Style</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{["keto-carnivore","strict carnivore","keto","low carb","mediterranean","no preference"].map(v=><Chip key={v} label={v} on={p.diet_style===v} onClick={()=>update("diet_style",v)}/>)}</div></div>
       <div><div className="lb">Fasting Plan</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{["48h-weekly","72h-weekly","36h-weekly","16:8 daily","OMAD","no fasting"].map(v=><Chip key={v} label={v} on={p.fasting_plan===v} onClick={()=>update("fasting_plan",v)}/>)}</div></div>
       <div><div className="lb">Foods You Love</div><input className="inp" value={p.foods_love} onChange={e=>update("foods_love",e.target.value)} /></div>
       <div><div className="lb">Foods You Avoid</div><input className="inp" value={p.foods_wont_eat} onChange={e=>update("foods_wont_eat",e.target.value)} /></div>
-      <div><div className="lb">Injuries</div><input className="inp" value={p.injuries} onChange={e=>update("injuries",e.target.value)} placeholder="Bad knees, shoulder issues, etc." /></div>
+      <div><div className="lb">Injuries / Limitations</div><input className="inp" value={p.injuries} onChange={e=>update("injuries",e.target.value)} placeholder="Bad knees, shoulder issues, pelvic floor concerns, etc." /></div>
       <div><div className="lb">Weekly Food Budget ($)</div><input className="inp" type="number" value={p.budget||""} onChange={e=>update("budget",e.target.value?Number(e.target.value):null)} /></div>
     </div>,
+    // ── Step 3: Body & Focus ───────────────────────────────
+    <div key="body" style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div><div className="lb">Body Type</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        {(p.gender==='female'
+          ? ["Apple (carry weight in middle)","Pear (carry weight in hips/thighs)","Hourglass","Rectangle (straight up/down)","Athletic / muscular"]
+          : ["Ectomorph (naturally slim)","Mesomorph (naturally athletic)","Endomorph (naturally stocky)"]
+        ).map(v=><Chip key={v} label={v} on={p.body_type===v} onClick={()=>update("body_type",v)}/>)}
+      </div></div>
+      <div><div className="lb">Areas to Focus On</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        {["Belly / midsection","Arms","Thighs / legs","Glutes / hips","Back","Chest","Core","Full body","Love handles","Face / neck"].map(v=>
+          <Chip key={v} label={v} on={(p.body_focus||[]).includes(v)} onClick={()=>toggleArr("body_focus",v)}/>
+        )}
+      </div></div>
+      <div><div className="lb">Describe Your Body & What You Want to Change</div>
+        <textarea className="inp" style={{minHeight:110,resize:"vertical"}} value={p.body_description||""} onChange={e=>update("body_description",e.target.value)}
+          placeholder={p.gender==='female'
+            ? "Describe where you carry weight, your body shape, what you love about yourself, what you want to improve, how clothes fit, how you want to feel in your body..."
+            : "Describe where you carry weight, what you want to build or lose, how your clothes fit, what you want to look and feel like..."}
+        />
+      </div>
+    </div>,
+    // ── Step 4: Goals & Your Story ─────────────────────────
     <div key="goals" style={{display:"flex",flexDirection:"column",gap:14}}>
-      <div><div className="lb">Select Your Goals</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{GOAL_OPTIONS.map(g=><Chip key={g} label={g} on={(p.goals||[]).includes(g)} onClick={()=>toggleArr("goals",g)}/>)}</div></div>
+      <div><div className="lb">Select Your Goals</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{getGoalOptions(p.gender).map(g=><Chip key={g} label={g} on={(p.goals||[]).includes(g)} onClick={()=>toggleArr("goals",g)}/>)}</div></div>
       <div><div className="lb">What is driving this transformation?</div><textarea className="inp" style={{minHeight:80,resize:"vertical"}} value={p.goals_own_words||""} onChange={e=>update("goals_own_words",e.target.value)} placeholder="Your 'why' in your own words..." /></div>
       <div><div className="lb">Specific areas of concern</div><textarea className="inp" style={{minHeight:80,resize:"vertical"}} value={p.specific_concerns||""} onChange={e=>update("specific_concerns",e.target.value)} placeholder="What bothers you most..." /></div>
       <div><div className="lb">Anything else the AI Coach should know</div><textarea className="inp" style={{minHeight:80,resize:"vertical"}} value={p.additional_info||""} onChange={e=>update("additional_info",e.target.value)} placeholder="Past diets, mental health, devices, inspiration..." /></div>
     </div>,
   ]
 
-  const titles = ["About You","Health Status","Diet & Training","Goals & Your Story"]
+  const titles = ["About You","Health Status","Diet & Training","Body & Focus","Goals & Your Story"]
 
   return (
     <div style={{display:"flex",justifyContent:"center",padding:"40px 20px",minHeight:"100vh"}}>
@@ -373,44 +445,61 @@ function BodyStatsTab({data,user,refresh}:any) {
 }
 
 // ─── WORKOUTS ────────────────────────────────────────────
-function WorkoutTab({data,user,refresh}:any) {
-  const [day,setDay]=useState("Push Day");const [done,setDone]=useState<Record<number,boolean>>({})
+function WorkoutTab({data,user,refresh,pf}:any) {
+  const wk = WK(pf?.gender||'male')
+  const defaultDay = Object.keys(wk)[0]
+  const [day,setDay]=useState(defaultDay);const [done,setDone]=useState<Record<number,boolean>>({})
   return <div style={{display:"flex",flexDirection:"column",gap:16}}>
-    <div style={{display:"flex",gap:8}}>{Object.keys(WK).map(d=><button key={d} className={day===d?"bt":"bt bto"} style={{flex:1,fontSize:12}} onClick={()=>{setDay(d);setDone({})}}>{d}</button>)}</div>
-    <div className="cd"><h3 style={{fontSize:15,fontWeight:700,marginBottom:14}}>{day}</h3>{WK[day].map((x,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:done[i]?"#f5c54210":"#12141c",borderRadius:8,marginBottom:6}}><div onClick={()=>setDone({...done,[i]:!done[i]})} style={{width:22,height:22,borderRadius:6,border:"2px solid "+(done[i]?"#f5c542":"#3a3d47"),background:done[i]?"#f5c542":"transparent",cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>{done[i]&&<span style={{color:"#0f1117",fontSize:14}}>✓</span>}</div><div style={{flex:1}}><div style={{fontSize:14,fontWeight:600}}>{x.ex}</div><div style={{fontSize:11,color:"#6a6d77"}}>{x.note}</div></div><span className="tg">{x.sets}</span></div>)}<button className="bt" style={{marginTop:12,width:"100%"}} onClick={async()=>{await db.addWorkout(user.id,today(),day,done);setDone({});refresh()}}>Log Workout</button></div>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{Object.keys(wk).map(d=><button key={d} className={day===d?"bt":"bt bto"} style={{flex:1,fontSize:12,minWidth:100}} onClick={()=>{setDay(d);setDone({})}}>{d}</button>)}</div>
+    <div className="cd"><h3 style={{fontSize:15,fontWeight:700,marginBottom:14}}>{day}</h3>{(wk[day]||[]).map((x,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:done[i]?"#f5c54210":"#12141c",borderRadius:8,marginBottom:6}}><div onClick={()=>setDone({...done,[i]:!done[i]})} style={{width:22,height:22,borderRadius:6,border:"2px solid "+(done[i]?"#f5c542":"#3a3d47"),background:done[i]?"#f5c542":"transparent",cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>{done[i]&&<span style={{color:"#0f1117",fontSize:14}}>✓</span>}</div><div style={{flex:1}}><div style={{fontSize:14,fontWeight:600}}>{x.ex}</div><div style={{fontSize:11,color:"#6a6d77"}}>{x.note}</div></div><span className="tg">{x.sets}</span></div>)}<button className="bt" style={{marginTop:12,width:"100%"}} onClick={async()=>{await db.addWorkout(user.id,today(),day,done);setDone({});refresh()}}>Log Workout</button></div>
     <div className="cd"><h3 style={{fontSize:15,fontWeight:700,marginBottom:12}}>History</h3>{data.workoutLog.length===0?<p style={{fontSize:13,color:"#6a6d77"}}>None yet.</p>:<div>{[...data.workoutLog].reverse().slice(0,10).map((w:any,i:number)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",fontSize:13}}><span>{fmt(w.date)}</span><span className="tg">{w.day}</span></div>)}</div>}</div>
   </div>
 }
 
 // ─── SUPPLEMENTS ─────────────────────────────────────────
-function SuppTab({data,user,refresh}:any) {
+function SuppTab({data,user,refresh,pf}:any) {
+  const suppList = pf?.gender==='female' ? SUPPS_FEMALE : SUPPS_MALE
   const tc=data.suppChecks[today()]||[]
   const toggle=async(i:number)=>{const c=tc.includes(i)?tc.filter((x:number)=>x!==i):[...tc,i];await db.setSuppChecks(user.id,today(),c);refresh()}
-  const pct=Math.round((tc.length/SUPPS.length)*100)
+  const pct=Math.round((tc.length/suppList.length)*100)
   return <div style={{display:"flex",flexDirection:"column",gap:16}}>
-    <div className="cd cdg" style={{textAlign:"center"}}><div style={{fontSize:42,fontWeight:900,color:pct===100?"#2ecc71":"#f5c542"}}>{pct}%</div></div>
-    <div className="cd">{SUPPS.map((s,i)=><div key={i} onClick={()=>toggle(i)} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:8,cursor:"pointer"}}><div style={{width:22,height:22,borderRadius:6,border:"2px solid "+(tc.includes(i)?"#f5c542":"#3a3d47"),background:tc.includes(i)?"#f5c542":"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>{tc.includes(i)&&<span style={{color:"#0f1117",fontSize:14}}>✓</span>}</div><div><div style={{fontSize:14,fontWeight:600,opacity:tc.includes(i)?0.5:1}}>{s.name} — {s.dose}</div><div style={{fontSize:11,color:"#6a6d77"}}>{s.time} | {s.why}</div></div></div>)}</div>
+    <div className="cd cdg" style={{textAlign:"center"}}><div style={{fontSize:42,fontWeight:900,color:pct===100?"#2ecc71":"#f5c542"}}>{pct}%</div><div style={{fontSize:11,color:"#6a6d77",marginTop:4}}>{pf?.gender==='female'?"Women's":"Men's"} supplement stack</div></div>
+    <div className="cd">{suppList.map((s,i)=><div key={i} onClick={()=>toggle(i)} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:8,cursor:"pointer"}}><div style={{width:22,height:22,borderRadius:6,border:"2px solid "+(tc.includes(i)?"#f5c542":"#3a3d47"),background:tc.includes(i)?"#f5c542":"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>{tc.includes(i)&&<span style={{color:"#0f1117",fontSize:14}}>✓</span>}</div><div><div style={{fontSize:14,fontWeight:600,opacity:tc.includes(i)?0.5:1}}>{s.name} — {s.dose}</div><div style={{fontSize:11,color:"#6a6d77"}}>{s.time} | {s.why}</div></div></div>)}</div>
   </div>
 }
 
 // ─── MEAL PLAN ───────────────────────────────────────────
 function MealTab({pf}:any) {
-  return <div className="cd"><h3 style={{fontSize:15,fontWeight:700,marginBottom:12}}>Personalized Meal Plan</h3><p style={{fontSize:13,color:"#a0a3ad"}}>Diet: {pf.diet_style} | Budget: ${pf.budget}/wk | Loves: {pf.foods_love||"not set"}</p><p style={{fontSize:12,color:"#6a6d77",marginTop:12}}>Ask the <strong style={{color:"#f5c542"}}>AI Coach</strong> tab for a fully personalized weekly meal plan, recipes, and shopping list.</p></div>
+  return <div className="cd"><h3 style={{fontSize:15,fontWeight:700,marginBottom:12}}>Personalized Meal Plan</h3><p style={{fontSize:13,color:"#a0a3ad"}}>Diet: {pf.diet_style} | Budget: ${pf.budget}/wk | Loves: {pf.foods_love||"not set"}</p><p style={{fontSize:12,color:"#6a6d77",marginTop:12}}>Ask the <strong style={{color:"#f5c542"}}>AI Coach</strong> tab for a fully personalized weekly meal plan, recipes, and shopping list tailored to your goals.</p></div>
 }
 
 // ─── SEXUAL HEALTH ───────────────────────────────────────
-function SexTab({data,user,refresh}:any) {
-  const [form,setForm]=useState({morningWood:"",erectionQuality:3,libido:3,hadSex:false,volume:"normal",stamina:"normal",notes:""})
-  const logEntry=async()=>{await db.addSexEntry(user.id,{...form,date:today()});setForm({morningWood:"",erectionQuality:3,libido:3,hadSex:false,volume:"normal",stamina:"normal",notes:""});refresh()}
+function SexTab({data,user,refresh,pf}:any) {
+  const isFemale = pf?.gender === 'female'
+  const [form,setForm]=useState({morningWood:"",morningEnergy:"",erectionQuality:3,libido:3,mood:3,hadSex:false,volume:"normal",stamina:"normal",pmsSymptoms:"",notes:""})
+  const logEntry=async()=>{
+    await db.addSexEntry(user.id,{...form,date:today(),morningWood:isFemale?form.morningEnergy:form.morningWood})
+    setForm({morningWood:"",morningEnergy:"",erectionQuality:3,libido:3,mood:3,hadSex:false,volume:"normal",stamina:"normal",pmsSymptoms:"",notes:""})
+    refresh()
+  }
   return <div style={{display:"flex",flexDirection:"column",gap:16}}>
     <div className="cd"><h3 style={{fontSize:15,fontWeight:700,marginBottom:14}}>Log Today</h3>
-      <div style={{marginBottom:14}}><div className="lb">Morning Wood</div><div style={{display:"flex",gap:8,marginTop:6}}>{[{v:"yes",l:"Yes",c:"#2ecc71"},{v:"partial",l:"Partial",c:"#f5c542"},{v:"no",l:"None",c:"#e74c3c"}].map(o=><button key={o.v} onClick={()=>setForm({...form,morningWood:o.v})} style={{flex:1,padding:"10px",borderRadius:8,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,border:"2px solid "+(form.morningWood===o.v?o.c:"#2a2d37"),background:form.morningWood===o.v?o.c+"20":"#12141c",color:form.morningWood===o.v?o.c:"#6a6d77"}}>{o.l}</button>)}</div></div>
-      <RatingPick label="Libido" value={form.libido} onChange={(v:number)=>setForm({...form,libido:v})} color="#3498db" lo="Dead" hi="On fire"/>
-      <div style={{marginBottom:14}}><div className="lb">Activity</div><div style={{display:"flex",gap:8}}><button onClick={()=>setForm({...form,hadSex:true})} className={form.hadSex?"bt":"bt bto"} style={{flex:1}}>Yes</button><button onClick={()=>setForm({...form,hadSex:false})} className={!form.hadSex?"bt":"bt bto"} style={{flex:1}}>No</button></div></div>
-      {form.hadSex&&<RatingPick label="Erection Quality" value={form.erectionQuality} onChange={(v:number)=>setForm({...form,erectionQuality:v})} color="#e056a0" lo="Weak" hi="Rock solid"/>}
+      {isFemale ? <>
+        <div style={{marginBottom:14}}><div className="lb">Morning Energy</div><div style={{display:"flex",gap:8,marginTop:6}}>{[{v:"great",l:"Great",c:"#2ecc71"},{v:"ok",l:"OK",c:"#f5c542"},{v:"low",l:"Low",c:"#e74c3c"}].map(o=><button key={o.v} onClick={()=>setForm({...form,morningEnergy:o.v})} style={{flex:1,padding:"10px",borderRadius:8,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,border:"2px solid "+(form.morningEnergy===o.v?o.c:"#2a2d37"),background:form.morningEnergy===o.v?o.c+"20":"#12141c",color:form.morningEnergy===o.v?o.c:"#6a6d77"}}>{o.l}</button>)}</div></div>
+        <RatingPick label="Libido" value={form.libido} onChange={(v:number)=>setForm({...form,libido:v})} color="#e056a0" lo="None" hi="High"/>
+        <RatingPick label="Mood" value={form.mood} onChange={(v:number)=>setForm({...form,mood:v})} color="#3498db" lo="Low" hi="Great"/>
+        <div style={{marginBottom:14}}><div className="lb">Sexual Activity</div><div style={{display:"flex",gap:8}}><button onClick={()=>setForm({...form,hadSex:true})} className={form.hadSex?"bt":"bt bto"} style={{flex:1}}>Yes</button><button onClick={()=>setForm({...form,hadSex:false})} className={!form.hadSex?"bt":"bt bto"} style={{flex:1}}>No</button></div></div>
+        <div style={{marginBottom:14}}><div className="lb">PMS / Cycle Symptoms (if any)</div><input className="inp" value={form.pmsSymptoms} onChange={e=>setForm({...form,pmsSymptoms:e.target.value})} placeholder="Cramps, bloating, mood shifts, spotting..." /></div>
+        <div style={{marginBottom:14}}><div className="lb">Notes</div><input className="inp" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} placeholder="Anything worth tracking..." /></div>
+      </> : <>
+        <div style={{marginBottom:14}}><div className="lb">Morning Wood</div><div style={{display:"flex",gap:8,marginTop:6}}>{[{v:"yes",l:"Yes",c:"#2ecc71"},{v:"partial",l:"Partial",c:"#f5c542"},{v:"no",l:"None",c:"#e74c3c"}].map(o=><button key={o.v} onClick={()=>setForm({...form,morningWood:o.v})} style={{flex:1,padding:"10px",borderRadius:8,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,border:"2px solid "+(form.morningWood===o.v?o.c:"#2a2d37"),background:form.morningWood===o.v?o.c+"20":"#12141c",color:form.morningWood===o.v?o.c:"#6a6d77"}}>{o.l}</button>)}</div></div>
+        <RatingPick label="Libido" value={form.libido} onChange={(v:number)=>setForm({...form,libido:v})} color="#3498db" lo="Dead" hi="On fire"/>
+        <div style={{marginBottom:14}}><div className="lb">Activity</div><div style={{display:"flex",gap:8}}><button onClick={()=>setForm({...form,hadSex:true})} className={form.hadSex?"bt":"bt bto"} style={{flex:1}}>Yes</button><button onClick={()=>setForm({...form,hadSex:false})} className={!form.hadSex?"bt":"bt bto"} style={{flex:1}}>No</button></div></div>
+        {form.hadSex&&<RatingPick label="Erection Quality" value={form.erectionQuality} onChange={(v:number)=>setForm({...form,erectionQuality:v})} color="#e056a0" lo="Weak" hi="Rock solid"/>}
+      </>}
       <button className="bt" style={{width:"100%"}} onClick={logEntry}>Log Entry</button>
     </div>
-    <div className="cd"><h3 style={{fontSize:15,fontWeight:700,marginBottom:12}}>Recent</h3>{data.sexLog.length===0?<p style={{fontSize:13,color:"#6a6d77"}}>No entries.</p>:<div>{[...data.sexLog].reverse().slice(0,10).map((e:any,i:number)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",fontSize:12}}><span>{fmt(e.date)}</span><span>AM:{e.morningWood==="yes"?"Y":"N"} L:{e.libido}/5 {e.hadSex?"E:"+e.erectionQuality+"/5":""}</span></div>)}</div>}</div>
+    <div className="cd"><h3 style={{fontSize:15,fontWeight:700,marginBottom:12}}>Recent</h3>{data.sexLog.length===0?<p style={{fontSize:13,color:"#6a6d77"}}>No entries.</p>:<div>{[...data.sexLog].reverse().slice(0,10).map((e:any,i:number)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",fontSize:12}}><span>{fmt(e.date)}</span><span>{isFemale?`Energy:${e.morningWood} L:${e.libido}/5 Mood:${e.mood||"?"}/5`:`AM:${e.morningWood==="yes"?"Y":"N"} L:${e.libido}/5${e.hadSex?" E:"+e.erectionQuality+"/5":""}`}</span></div>)}</div>}</div>
   </div>
 }
 
@@ -419,7 +508,7 @@ function CoachTab({pf, userId}:any) {
   const KEY = `kt_coach_${userId||'default'}`
   const [msgs,setMsgs]=useState<any[]>(()=>{try{return JSON.parse(localStorage.getItem(KEY)||'[]')}catch{return []}})
   const [input,setInput]=useState("");const [busy,setBusy]=useState(false);const ref=useRef<HTMLDivElement>(null)
-  const SYS="You are KEY COACH, an elite health transformation advisor for "+pf.name+". Age "+(pf.age||"?")+", "+(pf.height_ft||"?")+"ft"+(pf.height_in||"?")+"in, "+(pf.weight||"?")+"lbs (goal "+(pf.goal_weight||"?")+"). BP "+(pf.bp_sys||"?")+"/"+(pf.bp_dia||"?")+". Blood sugar: "+pf.blood_sugar+". Diet: "+pf.diet_style+". Fasting: "+pf.fasting_plan+". Injuries: "+(pf.injuries||"none")+". Allergies: "+(pf.allergies||"none")+". Goals: "+(pf.goals||[]).join(", ")+". "+(pf.goals_own_words?"MOTIVATION: "+pf.goals_own_words+". ":"")+(pf.specific_concerns?"CONCERNS: "+pf.specific_concerns+". ":"")+(pf.additional_info?"CONTEXT: "+pf.additional_info+". ":"")+"YOUR EXPERTISE: health/fitness, fasting, keto/carnivore nutrition, bodybuilding, natural medicine, supplements, red light therapy, biology, culinary arts, and The Bible. Style: direct, no-BS, specific numbers, scripture when natural, actionable. IMPORTANT: Chat history is automatically saved on the user's device. When asked to save or remember this conversation, confirm it is already saved automatically."
+  const SYS="You are KEY COACH, an elite health transformation advisor for "+pf.name+". Gender: "+(pf.gender||"not specified")+". Age "+(pf.age||"?")+", "+(pf.height_ft||"?")+"ft"+(pf.height_in||"?")+"in, "+(pf.weight||"?")+"lbs (goal "+(pf.goal_weight||"?")+"). BP "+(pf.bp_sys||"?")+"/"+(pf.bp_dia||"?")+". Blood sugar: "+pf.blood_sugar+". Diet: "+pf.diet_style+". Fasting: "+pf.fasting_plan+". Injuries: "+(pf.injuries||"none")+". Allergies: "+(pf.allergies||"none")+". Goals: "+(pf.goals||[]).join(", ")+". "+(pf.body_type?"Body type: "+pf.body_type+". ":"")+(pf.body_focus?.length?"Focus areas: "+(pf.body_focus||[]).join(", ")+". ":"")+(pf.body_description?"Body description: "+pf.body_description+". ":"")+(pf.gender==='female'?"Female health — PCOS: "+(pf.pcos?"yes":"no")+", Menopause: "+(pf.menopause_stage||"none")+(pf.hormone_concerns?", Hormone concerns: "+pf.hormone_concerns:"")+". ":"")+(pf.goals_own_words?"MOTIVATION: "+pf.goals_own_words+". ":"")+(pf.specific_concerns?"CONCERNS: "+pf.specific_concerns+". ":"")+(pf.additional_info?"CONTEXT: "+pf.additional_info+". ":"")+"YOUR EXPERTISE: health/fitness, fasting, keto/carnivore/mediterranean nutrition, bodybuilding, female hormonal health, natural medicine, supplements, red light therapy, biology, culinary arts, and The Bible. Style: direct, no-BS, specific numbers, scripture when natural, actionable. Tailor all advice to the user's gender. IMPORTANT: Chat history is automatically saved on the user's device. When asked to save or remember this conversation, confirm it is already saved automatically."
 
   // Auto-save chat to localStorage on every message change
   useEffect(()=>{try{localStorage.setItem(KEY,JSON.stringify(msgs))}catch{}},[msgs,KEY])

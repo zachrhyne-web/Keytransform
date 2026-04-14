@@ -51,9 +51,26 @@ create table if not exists public.profiles (
   specific_concerns text default '',
   additional_info text default '',
   profile_completed boolean default false,
+  -- gender & body fields
+  gender text default 'male',
+  pcos boolean default false,
+  menopause_stage text default 'none',
+  hormone_concerns text default '',
+  body_type text default '',
+  body_focus text[] default '{}',
+  body_description text default '',
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+-- Add new columns to existing profiles table (safe migration)
+alter table public.profiles add column if not exists gender text default 'male';
+alter table public.profiles add column if not exists pcos boolean default false;
+alter table public.profiles add column if not exists menopause_stage text default 'none';
+alter table public.profiles add column if not exists hormone_concerns text default '';
+alter table public.profiles add column if not exists body_type text default '';
+alter table public.profiles add column if not exists body_focus text[] default '{}';
+alter table public.profiles add column if not exists body_description text default '';
 
 -- 2. WEIGHT LOG
 create table if not exists public.weight_log (
